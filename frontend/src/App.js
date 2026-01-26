@@ -27,7 +27,7 @@ function App() {
 
   useEffect(() => {
     if (userName && !socketRef.current) {
-      socketRef.current = io('http://localhost:3001');
+      socketRef.current = io('https://tunesync-backend.onrender.com');
       socketRef.current.on('connect', () => setIsConnected(true));
       socketRef.current.on('disconnect', () => setIsConnected(false));
       socketRef.current.on('room-state', (room) => {
