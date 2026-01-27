@@ -1,9 +1,11 @@
-// Search for songs using iTunes API (Apple Music)
+// Search for songs using iTunes API with CORS proxy
 export const searchiTunesSongs = async (query) => {
   try {
-    const response = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`
-    );
+    // Use corsproxy.io for better mobile compatibility
+    const proxyUrl = 'https://corsproxy.io/?';
+    const apiUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`;
+    
+    const response = await fetch(proxyUrl + encodeURIComponent(apiUrl));
     const data = await response.json();
     
     if (!data.results || data.results.length === 0) {
