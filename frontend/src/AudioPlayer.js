@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const AudioPlayer = ({ track, isPlaying, volume, onEnded, onError }) => {
   const audioRef = useRef(null);
-  const [isLoading, setIsLoading] = useState(false);
+
 
   useEffect(() => {
     if (!audioRef.current || !track?.previewUrl) return;
@@ -14,7 +14,7 @@ const AudioPlayer = ({ track, isPlaying, volume, onEnded, onError }) => {
     
     // Update source
     if (audio.src !== track.previewUrl) {
-      setIsLoading(true);
+
       audio.src = track.previewUrl;
       audio.load();
     }
@@ -28,7 +28,7 @@ const AudioPlayer = ({ track, isPlaying, volume, onEnded, onError }) => {
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            setIsLoading(false);
+            
           })
           .catch(err => {
             // Ignore AbortError (happens when switching tracks quickly)
@@ -36,12 +36,12 @@ const AudioPlayer = ({ track, isPlaying, volume, onEnded, onError }) => {
               console.error('Playback error:', err);
               if (onError) onError(err);
             }
-            setIsLoading(false);
+            
           });
       }
     } else {
       audio.pause();
-      setIsLoading(false);
+      
     }
   }, [track, isPlaying, onError, volume]);
 
