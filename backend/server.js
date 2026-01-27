@@ -4,63 +4,143 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 
 const app = express();
+app.use(cors());
+
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
 });
 
-app.use(cors());
-app.use(express.json());
-
-const rooms = new Map();
+const rooms = {};
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('create-room', ({ roomCode, roomData, userId, userName }) => {
-    rooms.set(roomCode, {
+  socket.on('create-room', ({ roomCode, roomData, userId, userName, avatar }) => {
+    rooms[roomCode] = {
       ...roomData,
-      participants: [{ userId, userName, socketId: socket.id }],
-      queue: [
-        { id: 1, title: 'Shape of You', artist: 'Ed Sheeran' },
-        { id: 2, title: 'Blinding Lights', artist: 'The Weeknd' },
-        { id: 3, title: 'Levitating', artist: 'Dua Lipa' }
-      ],
+      participants: [{ userId, userName, socketId: socket.id, avatar: avatar || '👤' }],
+      queue: [],
       currentTrackIndex: 0,
-      isPlaying: false
-    });
+      isPlaying: false,
+      volume: 70,
+      isShuffle: false,
+      repeatMode: 'off'
+    };
     socket.join(roomCode);
+    socket.emit('room-state', rooms[roomCode]);
+    console.log('Room created:', roomCode, 'by', userName);
   });
 
-  socket.on('join-room', ({ roomCode, userId, userName }) => {
-    const room = rooms.get(roomCode);
-    if (room) {
-      room.participants.push({ userId, userName, socketId: socket.id });
+  socket.on('join-room', ({ roomCode, userId, userName, avatar }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].participants.push({ userId, userName, socketId: socket.id, avatar: avatar || '👤' });
       socket.join(roomCode);
-      socket.emit('room-state', room);
-      io.to(roomCode).emit('participants-updated', room.participants);
+      socket.emit('room-state', rooms[roomCode]);
+      io.to(roomCode).emit('participants-updated', rooms[roomCode].participants);
+      console.log('User joined room:', roomCode, userName);
+    } else {
+      socket.emit('error', { message: 'Room not found' });
     }
   });
 
-  socket.on('play', ({ roomCode }) => io.to(roomCode).emit('sync-play'));
-  socket.on('pause', ({ roomCode }) => io.to(roomCode).emit('sync-pause'));
-  socket.on('change-track', ({ roomCode, trackIndex }) => {
-    const room = rooms.get(roomCode);
-    if (room) room.currentTrackIndex = trackIndex;
-    io.to(roomCode).emit('sync-track-change', { trackIndex });
-  });
-  socket.on('add-to-queue', ({ roomCode, track }) => {
-    const room = rooms.get(roomCode);
-    if (room) {
-      room.queue.push(track);
-      io.to(roomCode).emit('queue-updated', room.queue);
+  socket.on('play', ({ roomCode }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].isPlaying = true;
+      socket.to(roomCode).emit('sync-play');
+      console.log('Play in room:', roomCode);
     }
   });
+
+  socket.on('pause', ({ roomCode }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].isPlaying = false;
+      socket.to(roomCode).emit('sync-pause');
+      console.log('Pause in room:', roomCode);
+    }
+  });
+
+  socket.on('change-track', ({ roomCode, trackIndex }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].currentTrackIndex = trackIndex;
+      rooms[roomCode].isPlaying = true;
+      socket.to(roomCode).emit('sync-track-change', { trackIndex });
+      console.log('Track changed in room:', roomCode, 'to index:', trackIndex);
+    }
+  });
+
+  socket.on('add-to-queue', ({ roomCode, track }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].queue.push(track);
+      io.to(roomCode).emit('queue-updated', rooms[roomCode].queue);
+      console.log('Track added to queue in room:', roomCode);
+    }
+  });
+
   socket.on('chat-message', ({ roomCode, message }) => {
     socket.to(roomCode).emit('chat-message', message);
+    console.log('Chat message in room:', roomCode, 'from', message.userName);
   });
 
-  socket.on('disconnect', () => console.log('User disconnected:', socket.id));
+  socket.on('add-reaction', ({ roomCode, reaction }) => {
+    socket.to(roomCode).emit('reaction-added', reaction);
+    console.log('Reaction added in room:', roomCode);
+  });
+
+  // New: Volume control
+  socket.on('volume-change', ({ roomCode, volume }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].volume = volume;
+      socket.to(roomCode).emit('volume-changed', { volume });
+      console.log('Volume changed in room:', roomCode, 'to', volume);
+    }
+  });
+
+  // New: Shuffle toggle
+  socket.on('toggle-shuffle', ({ roomCode, isShuffle }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].isShuffle = isShuffle;
+      socket.to(roomCode).emit('shuffle-toggled', { isShuffle });
+      console.log('Shuffle toggled in room:', roomCode, 'to', isShuffle);
+    }
+  });
+
+  // New: Repeat mode change
+  socket.on('change-repeat', ({ roomCode, repeatMode }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].repeatMode = repeatMode;
+      socket.to(roomCode).emit('repeat-changed', { repeatMode });
+      console.log('Repeat mode changed in room:', roomCode, 'to', repeatMode);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+    // Remove user from rooms
+    Object.keys(rooms).forEach(roomCode => {
+      const room = rooms[roomCode];
+      const participant = room.participants.find(p => p.socketId === socket.id);
+      
+      room.participants = room.participants.filter(p => p.socketId !== socket.id);
+      
+      if (room.participants.length === 0) {
+        console.log('Room deleted (empty):', roomCode);
+        delete rooms[roomCode];
+      } else {
+        io.to(roomCode).emit('participants-updated', room.participants);
+        if (participant) {
+          console.log('User left room:', roomCode, participant.userName);
+        }
+      }
+    });
+  });
 });
 
-server.listen(3001, () => console.log('Server running on http://localhost:3001'));
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`🎵 TuneSync Server running on http://localhost:${PORT}`);
+  console.log('Waiting for connections...');
+});
