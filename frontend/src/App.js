@@ -6,6 +6,9 @@ import AudioPlayer from './AudioPlayer';
 import YouTubePlayer from './YouTubePlayer';
 
 function App() {
+  const [activeTab, setActiveTab] = useState('music'); // 'music' or 'videos'
+const [videoQueue, setVideoQueue] = useState([]);
+const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [view, setView] = useState('setup');
   const [userName, setUserName] = useState('');
   const [roomName, setRoomName] = useState('');
@@ -533,6 +536,50 @@ socketRef.current = io(BACKEND_URL);
           ? (activeRoom?.theme ? `linear-gradient(135deg, ${activeRoom.theme}, #991b1b)` : s.page.background)
           : 'linear-gradient(135deg, #e0c3fc, #8ec5fc)'
       }}>
+      {/* Tab Navigation */}
+<div style={{ 
+  display: 'flex', 
+  gap: '10px', 
+  marginBottom: '20px',
+  maxWidth: '1100px',
+  margin: '0 auto 20px'
+}}>
+  <button
+    onClick={() => setActiveTab('music')}
+    style={{
+      flex: 1,
+      padding: '12px',
+      background: activeTab === 'music' ? 'rgba(236, 72, 153, 0.3)' : 'rgba(255,255,255,0.1)',
+      border: activeTab === 'music' ? '2px solid #ec4899' : '1px solid rgba(255,255,255,0.2)',
+      borderRadius: '8px',
+      color: isDarkMode ? 'white' : '#111',
+      cursor: 'pointer',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      transition: 'all 0.2s ease'
+    }}
+  >
+    🎵 Music
+  </button>
+  
+  <button
+    onClick={() => setActiveTab('videos')}
+    style={{
+      flex: 1,
+      padding: '12px',
+      background: activeTab === 'videos' ? 'rgba(236, 72, 153, 0.3)' : 'rgba(255,255,255,0.1)',
+      border: activeTab === 'videos' ? '2px solid #ec4899' : '1px solid rgba(255,255,255,0.2)',
+      borderRadius: '8px',
+      color: isDarkMode ? 'white' : '#111',
+      cursor: 'pointer',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      transition: 'all 0.2s ease'
+    }}
+  >
+    📺 Videos
+  </button>
+</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', maxWidth: '1100px', margin: '0 auto 16px' }}>
           <button 
             onClick={() => setView('home')} 
@@ -567,6 +614,261 @@ socketRef.current = io(BACKEND_URL);
         </div>
         
         <div style={{ maxWidth: '1100px', marginLeft: 'auto', marginRight: 'auto', display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '20px' }}>
+        {activeTab === 'music' ? (
+  // EXISTING MUSIC GRID (keep all your current music player code)
+  <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '20px' }}>
+    {/* All your existing music player, queue, and chat */}
+  </div>
+) : (
+  // NEW VIDEOS SECTION
+  <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
+    {/* Video Player Area */}
+    <div>
+      <div style={s.card}>
+        <h3 style={{ fontSize: '22px', marginBottom: '16px' }}>🎬 Watch Together</h3>
+        
+        {videoQueue[currentVideoIndex] ? (
+          <YouTubePlayer
+            videoId={videoQueue[currentVideoIndex].videoId}
+            isPlaying={isPlaying}
+            onEnded={() => {
+              if (currentVideoIndex < videoQueue.length - 1) {
+                setCurrentVideoIndex(currentVideoIndex + 1);
+              }
+            }}
+          />
+        ) : (
+          <div style={{
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: '12px',
+            padding: '60px 20px',
+            textAlign: 'center'
+          }}>
+            <p style={{ fontSize: '48px', marginBottom: '16px' }}>📺</p>
+            <p style={{ fontSize: '18px', opacity: 0.7 }}>No videos in queue</p>
+            <p style={{ fontSize: '14px', opacity: 0.5 }}>Search and add videos to watch together!</p>
+          </div>
+        )}
+        
+        {videoQueue[currentVideoIndex] && (
+          <div style={{ marginTop: '20px' }}>
+            <h4 style={{ fontSize: '18px', marginBottom: '8px' }}>
+              {videoQueue[currentVideoIndex].title}
+            </h4>
+            <p style={{ fontSize: '14px', opacity: 0.7 }}>
+              {videoQueue[currentVideoIndex].artist}
+            </p>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '20px' }}>
+              <button
+                onClick={() => {
+                  if (currentVideoIndex > 0) {
+                    setCurrentVideoIndex(currentVideoIndex - 1);
+                  }
+                }}
+                disabled={currentVideoIndex === 0}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  color: isDarkMode ? 'white' : '#111',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  cursor: currentVideoIndex === 0 ? 'not-allowed' : 'pointer',
+                  opacity: currentVideoIndex === 0 ? 0.3 : 1,
+                  fontSize: '16px'
+                }}
+              >
+                ⏮ Previous
+              </button>
+              
+              <button
+                onClick={togglePlay}
+                style={{
+                  background: 'linear-gradient(90deg, #ec4899, #a855f7)',
+                  border: 'none',
+                  color: 'white',
+                  padding: '12px 32px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  fontWeight: 'bold'
+                }}
+              >
+                {isPlaying ? '⏸ Pause' : '▶ Play'}
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (currentVideoIndex < videoQueue.length - 1) {
+                    setCurrentVideoIndex(currentVideoIndex + 1);
+                  }
+                }}
+                disabled={currentVideoIndex >= videoQueue.length - 1}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  color: isDarkMode ? 'white' : '#111',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  cursor: currentVideoIndex >= videoQueue.length - 1 ? 'not-allowed' : 'pointer',
+                  opacity: currentVideoIndex >= videoQueue.length - 1 ? 0.3 : 1,
+                  fontSize: '16px'
+                }}
+              >
+                Next ⏭
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Video Search */}
+        <div style={{ marginTop: '30px' }}>
+          <h4 style={{ fontSize: '16px', marginBottom: '10px' }}>🔍 Search Videos</h4>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && searchSongs()}
+              placeholder="Search YouTube..."
+              style={{
+                flex: 1,
+                padding: '8px',
+                borderRadius: '6px',
+                background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+                color: isDarkMode ? 'white' : '#111'
+              }}
+            />
+            <button
+              onClick={searchSongs}
+              disabled={isLoading}
+              style={{
+                padding: '8px 16px',
+                background: 'white',
+                color: '#111',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {isLoading ? '⏳' : '🔍'}
+            </button>
+          </div>
+          
+          {searchResults.filter(r => r.type === 'youtube').map(video => (
+            <div key={video.id} style={{
+              display: 'flex',
+              gap: '10px',
+              background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+              padding: '10px',
+              borderRadius: '6px',
+              marginBottom: '8px',
+              alignItems: 'center'
+            }}>
+              <img
+                src={video.albumArt}
+                alt={video.title}
+                style={{
+                  width: '80px',
+                  height: '60px',
+                  borderRadius: '4px',
+                  objectFit: 'cover'
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 'bold', fontSize: '14px' }}>📺 {video.title}</p>
+                <p style={{ fontSize: '12px', opacity: 0.7 }}>{video.artist}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setVideoQueue([...videoQueue, video]);
+                  setSearchResults([]);
+                  setSearchQuery('');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: 'rgba(236, 72, 153, 0.3)',
+                  color: isDarkMode ? 'white' : '#111',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                + Add
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+    
+    {/* Video Queue */}
+    <div style={s.card}>
+      <h3 style={{ fontSize: '18px', marginBottom: '12px' }}>📋 Video Queue ({videoQueue.length})</h3>
+      <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+        {videoQueue.map((video, i) => (
+          <div
+            key={video.id}
+            onClick={() => {
+              setCurrentVideoIndex(i);
+              setIsPlaying(true);
+            }}
+            style={{
+              background: currentVideoIndex === i
+                ? (isDarkMode ? 'rgba(236, 72, 153, 0.3)' : 'rgba(236, 72, 153, 0.2)')
+                : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),
+              padding: '10px',
+              borderRadius: '6px',
+              marginBottom: '8px',
+              border: currentVideoIndex === i ? '2px solid #ec4899' : 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', opacity: 0.6 }}>{i + 1}</span>
+              <img
+                src={video.albumArt}
+                alt={video.title}
+                style={{
+                  width: '60px',
+                  height: '45px',
+                  borderRadius: '4px',
+                  objectFit: 'cover'
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                  {video.title.length > 40 ? video.title.substring(0, 40) + '...' : video.title}
+                </p>
+                <p style={{ fontSize: '11px', opacity: 0.7 }}>{video.artist}</p>
+              </div>
+              {currentVideoIndex === i && isPlaying && (
+                <span style={{ fontSize: '16px' }}>📺</span>
+              )}
+            </div>
+          </div>
+        ))}
+        
+        {videoQueue.length === 0 && (
+          <div style={{
+            textAlign: 'center',
+            padding: '40px 20px',
+            opacity: 0.5
+          }}>
+            <p style={{ fontSize: '32px', marginBottom: '8px' }}>🎬</p>
+            <p style={{ fontSize: '14px' }}>No videos yet</p>
+            <p style={{ fontSize: '12px' }}>Search and add videos!</p>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
           <div>
             <div style={{ ...s.card, marginBottom: '20px' }}>
               <h2 style={{ fontSize: '28px', marginBottom: '8px' }}>{activeRoom.name}</h2>
