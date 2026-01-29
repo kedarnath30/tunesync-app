@@ -3,7 +3,7 @@ export const searchiTunesSongs = async (query) => {
   try {
     // iTunes API has built-in JSONP support for CORS
     const response = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10&callback=?`,
+      `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`,
       {
         method: 'GET',
         headers: {
