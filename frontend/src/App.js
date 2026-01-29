@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { searchiTunesSongs } from './services/youtube';
+import { searchYouTubeVideos } from './services/youtubeVideo';
 import AudioPlayer from './AudioPlayer';
 
 function App() {
