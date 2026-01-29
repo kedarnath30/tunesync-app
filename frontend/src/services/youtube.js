@@ -1,25 +1,28 @@
-// Mobile-friendly music search with CORS proxy
+// Mobile-friendly music search - direct fetch (works on most browsers now)
 export const searchiTunesSongs = async (query) => {
   try {
-    console.log('Searching for:', query);
+    console.log('Searching iTunes for:', query);
     
-    // Use AllOrigins proxy for mobile compatibility
-    const apiUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`;
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
+    const response = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`,
+      {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-cache'
+      }
+    );
     
-    const response = await fetch(proxyUrl);
-    
-    console.log('Response status:', response.status);
+    console.log('iTunes response status:', response.status);
     
     if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+      throw new Error(`iTunes API returned ${response.status}`);
     }
     
     const data = await response.json();
     console.log('iTunes results:', data.resultCount);
     
     if (!data.results || data.results.length === 0) {
-      console.log('No results found');
+      console.log('No iTunes results found');
       return [];
     }
     
@@ -30,10 +33,12 @@ export const searchiTunesSongs = async (query) => {
       artist: track.artistName,
       duration: formatDuration(Math.floor(track.trackTimeMillis / 1000)),
       albumArt: track.artworkUrl100 ? track.artworkUrl100.replace('100x100', '300x300') : '',
-      previewUrl: track.previewUrl
+      previewUrl: track.previewUrl,
+      type: 'itunes' // Mark as iTunes audio
     }));
   } catch (error) {
     console.error('iTunes search error:', error);
+    // Return empty array instead of fallback
     return [];
   }
 };
