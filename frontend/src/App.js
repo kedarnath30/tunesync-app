@@ -3,6 +3,7 @@ import io from 'socket.io-client';
 import { searchiTunesSongs } from './services/youtube';
 import { searchYouTubeVideos } from './services/youtubeVideo';
 import AudioPlayer from './AudioPlayer';
+import YouTubePlayer from './YouTubePlayer';
 
 function App() {
   const [view, setView] = useState('setup');
@@ -794,7 +795,10 @@ socketRef.current = io(BACKEND_URL);
       />
     )}
     <div style={{ flex: 1 }}>
-      <p style={{ fontWeight: 'bold', fontSize: '14px' }}>{r.title}</p>
+      <p style={{ fontWeight: 'bold', fontSize: '14px' }}>
+  {r.type === 'youtube' && '📺 '}
+  {r.title}
+</p>
       <p style={{ fontSize: '12px', opacity: 0.7 }}>{r.artist} • {r.duration}</p>
     </div>
                     <button 
@@ -921,13 +925,21 @@ socketRef.current = io(BACKEND_URL);
           </div>
         </div>
         
-        <AudioPlayer
-          track={currentTrack}
-          isPlaying={isPlaying}
-          volume={volume}
-          onEnded={handleTrackEnded}
-          onError={(err) => console.error('Audio error:', err)}
-        />
+        {currentTrack?.type === 'youtube' ? (
+  <YouTubePlayer
+    videoId={currentTrack.videoId}
+    isPlaying={isPlaying}
+    onEnded={handleTrackEnded}
+  />
+) : (
+  <AudioPlayer
+    track={currentTrack}
+    isPlaying={isPlaying}
+    volume={volume}
+    onEnded={handleTrackEnded}
+    onError={(err) => console.error('Audio error:', err)}
+  />
+)}
       </div>
     );
   }
