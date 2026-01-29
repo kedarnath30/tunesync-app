@@ -1,19 +1,13 @@
-// Mobile-friendly music search using iTunes API
+// Mobile-friendly music search with CORS proxy
 export const searchiTunesSongs = async (query) => {
   try {
     console.log('Searching for:', query);
     
-    const response = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`,
-      {
-        method: 'GET',
-        mode: 'cors',
-        headers: {
-          'Accept': 'application/json',
-        },
-        cache: 'no-cache'
-      }
-    );
+    // Use AllOrigins proxy for mobile compatibility
+    const apiUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
+    
+    const response = await fetch(proxyUrl);
     
     console.log('Response status:', response.status);
     
@@ -22,14 +16,12 @@ export const searchiTunesSongs = async (query) => {
     }
     
     const data = await response.json();
-    console.log('iTunes data:', data);
+    console.log('iTunes results:', data.resultCount);
     
     if (!data.results || data.results.length === 0) {
-      console.log('No results from iTunes API');
+      console.log('No results found');
       return [];
     }
-    
-    console.log('Found', data.results.length, 'songs');
     
     // Format results
     return data.results.map(track => ({
@@ -42,7 +34,6 @@ export const searchiTunesSongs = async (query) => {
     }));
   } catch (error) {
     console.error('iTunes search error:', error);
-    // Don't return fallback - just return empty array
     return [];
   }
 };
