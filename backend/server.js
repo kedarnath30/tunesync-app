@@ -9,7 +9,11 @@ app.use(cors());
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: [
+  "http://localhost:3000",
+  "https://tunesync-app.vercel.app",
+  /https:\/\/tunesync-.*\.vercel\.app$/ // Allows all Vercel preview deployments
+],
     methods: ["GET", "POST"]
   }
 });
