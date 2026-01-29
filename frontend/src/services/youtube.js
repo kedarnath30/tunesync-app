@@ -1,25 +1,35 @@
-// Simple music search using iTunes API (works without CORS proxy)
+// Mobile-friendly music search using iTunes API
 export const searchiTunesSongs = async (query) => {
   try {
-    // iTunes API has built-in JSONP support for CORS
+    console.log('Searching for:', query);
+    
     const response = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=10`,
       {
         method: 'GET',
+        mode: 'cors',
         headers: {
           'Accept': 'application/json',
-        }
+        },
+        cache: 'no-cache'
       }
     );
     
+    console.log('Response status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
     const data = await response.json();
+    console.log('iTunes data:', data);
     
     if (!data.results || data.results.length === 0) {
       console.log('No results from iTunes API');
       return [];
     }
     
-    console.log('iTunes results:', data.results.length);
+    console.log('Found', data.results.length, 'songs');
     
     // Format results
     return data.results.map(track => ({
@@ -32,27 +42,8 @@ export const searchiTunesSongs = async (query) => {
     }));
   } catch (error) {
     console.error('iTunes search error:', error);
-    
-    // Fallback: return mock data for testing
-    console.log('Returning mock data as fallback');
-    return [
-      {
-        id: Date.now() + 1,
-        title: query + ' - Song 1',
-        artist: 'Artist Name',
-        duration: '3:45',
-        albumArt: '',
-        previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
-      },
-      {
-        id: Date.now() + 2,
-        title: query + ' - Song 2',
-        artist: 'Artist Name',
-        duration: '4:12',
-        albumArt: '',
-        previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
-      }
-    ];
+    // Don't return fallback - just return empty array
+    return [];
   }
 };
 
