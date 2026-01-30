@@ -21,19 +21,16 @@ const EnhancedYouTubePlayer = ({
 
   // Load YouTube IFrame API
   useEffect(() => {
-    // Check if API is already loaded
     if (window.YT && window.YT.Player) {
       initializePlayer();
       return;
     }
 
-    // Load the IFrame Player API code asynchronously
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-    // API will call this function when ready
     window.onYouTubeIframeAPIReady = () => {
       initializePlayer();
     };
@@ -52,7 +49,7 @@ const EnhancedYouTubePlayer = ({
       videoId: videoId,
       playerVars: {
         autoplay: 0,
-        controls: isHost ? 1 : 0, // Only host gets controls
+        controls: isHost ? 1 : 0,
         modestbranding: 1,
         rel: 0,
         fs: 1,
@@ -65,47 +62,33 @@ const EnhancedYouTubePlayer = ({
           setPlayer(event.target);
           if (onReady) onReady(event.target);
           
-          // Start sync interval for host
           if (isHost) {
             syncIntervalRef.current = setInterval(() => {
               if (playerRef.current && playerRef.current.getCurrentTime) {
                 const currentTime = playerRef.current.getCurrentTime();
                 const playerState = playerRef.current.getPlayerState();
                 
-                // Send timestamp to other users
                 if (onTimeUpdate && Math.abs(currentTime - lastSyncTime.current) > 1) {
-                  onTimeUpdate(currentTime, playerState === 1); // 1 = playing
+                  onTimeUpdate(currentTime, playerState === 1);
                   lastSyncTime.current = currentTime;
                 }
               }
-            }, 2000); // Sync every 2 seconds
+            }, 2000);
           }
         },
         onStateChange: (event) => {
           console.log('Player state changed:', event.data);
           
-          // YouTube player states:
-          // -1 (unstarted)
-          // 0 (ended)
-          // 1 (playing)
-          // 2 (paused)
-          // 3 (buffering)
-          // 5 (video cued)
-          
           if (event.data === 3) {
-            // Buffering
             setIsBuffering(true);
             if (onBuffering) onBuffering(true);
           } else if (event.data === 1 || event.data === 2) {
-            // Playing or paused
             setIsBuffering(false);
             if (onBuffering) onBuffering(false);
           } else if (event.data === 0) {
-            // Video ended
             if (onEnded) onEnded();
           }
 
-          // Host controls - emit state changes
           if (isHost && socket && roomCode) {
             if (event.data === 1) {
               socket.emit('video-play', { roomCode });
@@ -121,13 +104,11 @@ const EnhancedYouTubePlayer = ({
     });
   };
 
-  // Sync to timestamp from host
   useEffect(() => {
     if (!isHost && player && syncToTime !== null && syncToTime !== undefined) {
       const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
       const timeDiff = Math.abs(currentTime - syncToTime);
       
-      // If difference is more than 3 seconds, sync
       if (timeDiff > 3) {
         console.log(`Syncing: Current ${currentTime}s, Target ${syncToTime}s, Diff ${timeDiff}s`);
         player.seekTo(syncToTime, true);
@@ -135,24 +116,20 @@ const EnhancedYouTubePlayer = ({
     }
   }, [syncToTime, isHost, player]);
 
-  // Handle play/pause from parent
   useEffect(() => {
     if (!player) return;
 
     const playerState = player.getPlayerState ? player.getPlayerState() : -1;
     
     if (isPlaying && playerState !== 1) {
-      // Should be playing but isn't
       console.log('Play requested');
       player.playVideo();
     } else if (!isPlaying && playerState === 1) {
-      // Should be paused but is playing
       console.log('Pause requested');
       player.pauseVideo();
     }
   }, [isPlaying, player]);
 
-  // Change video when videoId changes
   useEffect(() => {
     if (player && player.loadVideoById) {
       console.log('Loading new video:', videoId);
@@ -174,7 +151,6 @@ const EnhancedYouTubePlayer = ({
       boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
       backgroundColor: '#000'
     }}>
-      {/* YouTube Player */}
       <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
         <div 
           ref={iframeRef}
@@ -188,7 +164,6 @@ const EnhancedYouTubePlayer = ({
         />
       </div>
 
-      {/* Buffering Overlay */}
       {isBuffering && (
         <div style={{
           position: 'absolute',
@@ -215,7 +190,6 @@ const EnhancedYouTubePlayer = ({
         </div>
       )}
 
-      {/* Host Badge */}
       {isHost && (
         <div style={{
           position: 'absolute',
@@ -237,7 +211,6 @@ const EnhancedYouTubePlayer = ({
   );
 };
 
-// Add spin animation
 const styleSheet = document.createElement("style");
 styleSheet.textContent = `
   @keyframes spin {

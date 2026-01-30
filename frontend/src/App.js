@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import { searchiTunesSongs } from './services/youtube';
 import { searchYouTubeVideos } from './services/youtubeVideo';
 import AudioPlayer from './AudioPlayer';
-import YouTubePlayer from './YouTubePlayer';
+import EnhancedYouTubePlayer from './EnhancedYouTubePlayer';
 
 function App() {
   const [view, setView] = useState('setup');
@@ -18,16 +18,21 @@ function App() {
   
   // Music tab states
   const [queue, setQueue] = useState([
-    { id: 1, title: 'Shape of You', artist: 'Ed Sheeran', duration: '3:45' },
-    { id: 2, title: 'Blinding Lights', artist: 'The Weeknd', duration: '3:20' },
-    { id: 3, title: 'Levitating', artist: 'Dua Lipa', duration: '3:23' }
+    { id: 1, title: 'Shape of You', artist: 'Ed Sheeran', duration: '3:45', type: 'itunes' },
+    { id: 2, title: 'Blinding Lights', artist: 'The Weeknd', duration: '3:20', type: 'itunes' },
+    { id: 3, title: 'Levitating', artist: 'Dua Lipa', duration: '3:23', type: 'itunes' }
   ]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   
   // Videos tab states
-  const [activeTab, setActiveTab] = useState('music'); // 'music' or 'videos'
+  const [activeTab, setActiveTab] = useState('music');
   const [videoQueue, setVideoQueue] = useState([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  
+  // Host control states
+  const [isHost, setIsHost] = useState(false);
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
+  const [bufferingUsers, setBufferingUsers] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -41,6 +46,7 @@ function App() {
   const [error, setError] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [userAvatar, setUserAvatar] = useState('👤');
+  
   const socketRef = useRef(null);
   const chatEndRef = useRef(null);
 
@@ -71,32 +77,41 @@ function App() {
         setIsLoading(false);
       });
       
+      // Room state with host tracking
       socketRef.current.on('room-state', (room) => {
-        setParticipants(room.participants.map(p => ({ name: p.userName, avatar: p.avatar || '👤' })));
+        setParticipants(room.participants.map(p => ({ 
+          name: p.userName, 
+          avatar: p.avatar || '👤',
+          isHost: p.isHost,
+          userId: p.userId
+        })));
+        
+        // Check if current user is host
+        const me = room.participants.find(p => p.userName === userName);
+        if (me) {
+          setIsHost(me.isHost);
+        }
+        
         if (room.queue) setQueue(room.queue);
         if (room.currentTrackIndex !== undefined) setCurrentTrackIndex(room.currentTrackIndex);
         if (room.isPlaying !== undefined) setIsPlaying(room.isPlaying);
         if (room.volume !== undefined) setVolume(room.volume);
         if (room.isShuffle !== undefined) setIsShuffle(room.isShuffle);
         if (room.repeatMode !== undefined) setRepeatMode(room.repeatMode);
+        
+        // Video state
+        if (room.videoQueue) setVideoQueue(room.videoQueue);
+        if (room.currentVideoIndex !== undefined) setCurrentVideoIndex(room.currentVideoIndex);
+        if (room.currentVideoTime !== undefined) setCurrentVideoTime(room.currentVideoTime);
       });
-      socketRef.current.on('video-changed', ({ videoIndex }) => {
-  console.log('Video changed event received:', videoIndex);
-  setCurrentVideoIndex(videoIndex);
-  setIsPlaying(true);
-});
-
-socketRef.current.on('video-queue-updated', (newVideoQueue) => {
-  console.log('Video queue updated:', newVideoQueue.length);
-  setVideoQueue(newVideoQueue);
-});
-
-socketRef.current.on('tab-changed', ({ tab }) => {
-  console.log('Tab changed event received:', tab);
-  setActiveTab(tab);
-});
+      
       socketRef.current.on('participants-updated', (p) => 
-        setParticipants(p.map(x => ({ name: x.userName, avatar: x.avatar || '👤' })))
+        setParticipants(p.map(x => ({ 
+          name: x.userName, 
+          avatar: x.avatar || '👤',
+          isHost: x.isHost,
+          userId: x.userId
+        })))
       );
       
       socketRef.current.on('sync-play', () => setIsPlaying(true));
@@ -120,6 +135,60 @@ socketRef.current.on('tab-changed', ({ tab }) => {
       socketRef.current.on('volume-changed', ({ volume }) => setVolume(volume));
       socketRef.current.on('shuffle-toggled', ({ isShuffle }) => setIsShuffle(isShuffle));
       socketRef.current.on('repeat-changed', ({ repeatMode }) => setRepeatMode(repeatMode));
+      
+      // Video sync events
+      socketRef.current.on('video-changed', ({ videoIndex }) => {
+        console.log('Video changed event received:', videoIndex);
+        setCurrentVideoIndex(videoIndex);
+        setIsPlaying(true);
+      });
+      
+      socketRef.current.on('video-queue-updated', (newVideoQueue) => {
+        console.log('Video queue updated:', newVideoQueue.length);
+        setVideoQueue(newVideoQueue);
+      });
+      
+      socketRef.current.on('tab-changed', ({ tab }) => {
+        console.log('Tab changed event received:', tab);
+        setActiveTab(tab);
+      });
+      
+      // Timestamp sync from host
+      socketRef.current.on('sync-video-timestamp', ({ currentTime, isPlaying }) => {
+        console.log('Received timestamp sync:', currentTime);
+        setCurrentVideoTime(currentTime);
+        setIsPlaying(isPlaying);
+      });
+      
+      // Buffering status
+      socketRef.current.on('buffering-status-update', ({ bufferingUsers, shouldPause }) => {
+        console.log('Buffering users:', bufferingUsers);
+        setBufferingUsers(bufferingUsers);
+        
+        // Auto-pause if someone is buffering (only for non-hosts)
+        if (shouldPause && !isHost && bufferingUsers.length > 0) {
+          setIsPlaying(false);
+        } else if (!shouldPause && bufferingUsers.length === 0) {
+          setIsPlaying(true);
+        }
+      });
+      
+      // Host changed
+      socketRef.current.on('host-changed', ({ newHostId, newHostName, participants }) => {
+        console.log('New host:', newHostName);
+        setParticipants(participants.map(p => ({ 
+          name: p.userName, 
+          avatar: p.avatar || '👤',
+          isHost: p.isHost,
+          userId: p.userId
+        })));
+        
+        // Update own host status
+        const me = participants.find(p => p.userName === userName);
+        if (me) {
+          setIsHost(me.isHost);
+        }
+      });
     }
   }, [userName]);
 
@@ -144,7 +213,8 @@ socketRef.current.on('tab-changed', ({ tab }) => {
         avatar: userAvatar
       });
       setActiveRoom({ name: roomName, code, theme: selectedTheme });
-      setParticipants([{ name: userName, avatar: userAvatar }]);
+      setParticipants([{ name: userName, avatar: userAvatar, isHost: true, userId: Date.now() }]);
+      setIsHost(true);
       setView('room');
       setRoomName('');
     }
@@ -254,14 +324,12 @@ socketRef.current.on('tab-changed', ({ tab }) => {
       setIsLoading(true);
       try {
         if (activeTab === 'music') {
-          // Search iTunes for music
           const results = await searchiTunesSongs(searchQuery);
           setSearchResults(results);
           if (results.length === 0) {
             alert('No songs found. Try a different search!');
           }
         } else {
-          // Search YouTube for videos
           const results = await searchYouTubeVideos(searchQuery);
           setSearchResults(results);
           if (results.length === 0) {
@@ -289,64 +357,62 @@ socketRef.current.on('tab-changed', ({ tab }) => {
   };
 
   const addVideoToQueue = (video) => {
-  const newQueue = [...videoQueue, video];
-  setVideoQueue(newQueue);
-  setSearchResults([]);
-  setSearchQuery('');
-  
-  // Add socket sync
-  if (socketRef.current && activeRoom) {
-    socketRef.current.emit('add-video-to-queue', { 
-      roomCode: activeRoom.code, 
-      video 
-    });
-  }
-};
+    setVideoQueue([...videoQueue, video]);
+    setSearchResults([]);
+    setSearchQuery('');
+    
+    if (socketRef.current && activeRoom) {
+      socketRef.current.emit('add-video-to-queue', { 
+        roomCode: activeRoom.code, 
+        video 
+      });
+    }
+  };
 
   const playVideo = (index) => {
-  console.log('Playing video at index:', index);
-  setCurrentVideoIndex(index);
-  setIsPlaying(true);
-  
-  if (socketRef.current && activeRoom) {
-    socketRef.current.emit('sync-video', { 
-      roomCode: activeRoom.code, 
-      videoIndex: index 
-    });
-  }
-};
+    console.log('Playing video at index:', index);
+    setCurrentVideoIndex(index);
+    setIsPlaying(true);
+    
+    if (socketRef.current && activeRoom && isHost) {
+      socketRef.current.emit('sync-video', { 
+        roomCode: activeRoom.code, 
+        videoIndex: index 
+      });
+    }
+  };
 
   const nextVideo = () => {
-  if (currentVideoIndex < videoQueue.length - 1) {
-    const newIndex = currentVideoIndex + 1;
-    console.log('Next video:', newIndex);
-    setCurrentVideoIndex(newIndex);
-    setIsPlaying(true);
-    
-    if (socketRef.current && activeRoom) {
-      socketRef.current.emit('sync-video', { 
-        roomCode: activeRoom.code, 
-        videoIndex: newIndex 
-      });
+    if (currentVideoIndex < videoQueue.length - 1) {
+      const newIndex = currentVideoIndex + 1;
+      console.log('Next video:', newIndex);
+      setCurrentVideoIndex(newIndex);
+      setIsPlaying(true);
+      
+      if (socketRef.current && activeRoom && isHost) {
+        socketRef.current.emit('sync-video', { 
+          roomCode: activeRoom.code, 
+          videoIndex: newIndex 
+        });
+      }
     }
-  }
-};
+  };
 
   const previousVideo = () => {
-  if (currentVideoIndex > 0) {
-    const newIndex = currentVideoIndex - 1;
-    console.log('Previous video:', newIndex);
-    setCurrentVideoIndex(newIndex);
-    setIsPlaying(true);
-    
-    if (socketRef.current && activeRoom) {
-      socketRef.current.emit('sync-video', { 
-        roomCode: activeRoom.code, 
-        videoIndex: newIndex 
-      });
+    if (currentVideoIndex > 0) {
+      const newIndex = currentVideoIndex - 1;
+      console.log('Previous video:', newIndex);
+      setCurrentVideoIndex(newIndex);
+      setIsPlaying(true);
+      
+      if (socketRef.current && activeRoom && isHost) {
+        socketRef.current.emit('sync-video', { 
+          roomCode: activeRoom.code, 
+          videoIndex: newIndex 
+        });
+      }
     }
-  }
-};
+  };
 
   const sendMessage = () => {
     if (message.trim() && socketRef.current && activeRoom) {
@@ -421,7 +487,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
       boxShadow: '0 4px 15px rgba(236, 72, 153, 0.3)'
     }
   };
-    // Add CSS animation
+
   const styleSheet = document.createElement("style");
   styleSheet.textContent = `
     @keyframes fadeIn {
@@ -665,30 +731,24 @@ socketRef.current.on('tab-changed', ({ tab }) => {
             <h2 style={{ fontSize: '28px', marginBottom: '8px' }}>{activeRoom.name}</h2>
             <p style={{ fontSize: '14px', opacity: 0.7 }}>
               Code: <strong>{activeRoom.code}</strong> | 
-              {participants.map(p => ` ${p.avatar} ${p.name}`).join(', ')} ({participants.length} users)
+              {participants.map(p => ` ${p.avatar} ${p.name}${p.isHost ? ' 👑' : ''}`).join(', ')} ({participants.length} users)
             </p>
           </div>
 
           {/* Tab Navigation */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
             <button
-  onClick={() => {
-    setActiveTab('music');
-    setSearchResults([]);
-    setSearchQuery('');
-    
-    if (socketRef.current && activeRoom) {
-      socketRef.current.emit('sync-tab-change', { 
-        roomCode: activeRoom.code, 
-        tab: 'music' 
-      });
-    }
-  }}
-  // ...styles
->
-  🎵 Music
-</button>
-<button
+              onClick={() => {
+                setActiveTab('music');
+                setSearchResults([]);
+                setSearchQuery('');
+                if (socketRef.current && activeRoom) {
+                  socketRef.current.emit('sync-tab-change', { 
+                    roomCode: activeRoom.code, 
+                    tab: 'music' 
+                  });
+                }
+              }}
               style={{
                 flex: 1,
                 padding: '12px',
@@ -703,21 +763,20 @@ socketRef.current.on('tab-changed', ({ tab }) => {
               }}
             >
               🎵 Music
-                </button>      
+            </button>
+            
             <button
               onClick={() => {
-  setActiveTab('videos');
-  setSearchResults([]);
-  setSearchQuery('');
-  
-  // Add socket sync
-  if (socketRef.current && activeRoom) {
-    socketRef.current.emit('sync-tab-change', { 
-      roomCode: activeRoom.code, 
-      tab: 'videos' 
-    });
-  }
-}}
+                setActiveTab('videos');
+                setSearchResults([]);
+                setSearchQuery('');
+                if (socketRef.current && activeRoom) {
+                  socketRef.current.emit('sync-tab-change', { 
+                    roomCode: activeRoom.code, 
+                    tab: 'videos' 
+                  });
+                }
+              }}
               style={{
                 flex: 1,
                 padding: '12px',
@@ -739,7 +798,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
           {activeTab === 'music' ? (
             // MUSIC TAB CONTENT
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '20px' }}>
-              {/* Music Player */}
+              {/* Music Player Column */}
               <div>
                 <div style={s.card}>
                   <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -982,7 +1041,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
                 </div>
               </div>
 
-              {/* Music Queue */}
+              {/* Music Queue Column */}
               <div style={s.card}>
                 <h3 style={{ fontSize: '18px', marginBottom: '12px' }}>📋 Queue ({queue.length})</h3>
                 <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
@@ -1031,7 +1090,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
                 </div>
               </div>
 
-              {/* Chat */}
+              {/* Chat Column */}
               <div style={s.card}>
                 <h3 style={{ fontSize: '18px', marginBottom: '12px' }}>💬 Chat</h3>
                 <div style={{ 
@@ -1088,24 +1147,70 @@ socketRef.current.on('tab-changed', ({ tab }) => {
               </div>
             </div>
           ) : (
-            // VIDEOS TAB CONTENT
+            // VIDEOS TAB CONTENT - WITH ENHANCED YOUTUBE PLAYER
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-              {/* Video Player */}
+              {/* Video Player Column */}
               <div>
                 <div style={s.card}>
                   <h3 style={{ fontSize: '22px', marginBottom: '16px' }}>🎬 Watch Together</h3>
                   
                   {currentVideo ? (
                     <>
-                      <YouTubePlayer
+                      <EnhancedYouTubePlayer
                         videoId={currentVideo.videoId}
                         isPlaying={isPlaying}
+                        isHost={isHost}
+                        roomCode={activeRoom.code}
+                        socket={socketRef.current}
+                        syncToTime={currentVideoTime}
+                        onTimeUpdate={(currentTime, playing) => {
+                          if (isHost && socketRef.current && activeRoom) {
+                            socketRef.current.emit('video-timestamp-update', {
+                              roomCode: activeRoom.code,
+                              currentTime,
+                              isPlaying: playing
+                            });
+                          }
+                        }}
+                        onBuffering={(buffering) => {
+                          if (socketRef.current && activeRoom) {
+                            socketRef.current.emit('user-buffering', {
+                              roomCode: activeRoom.code,
+                              isBuffering: buffering,
+                              userId: Date.now(),
+                              userName: userName
+                            });
+                          }
+                        }}
+                        onReady={(player) => {
+                          console.log('Player ready');
+                        }}
                         onEnded={() => {
-                          if (currentVideoIndex < videoQueue.length - 1) {
+                          if (isHost && currentVideoIndex < videoQueue.length - 1) {
                             nextVideo();
                           }
                         }}
                       />
+                      
+                      {/* Buffering Overlay */}
+                      {bufferingUsers.length > 0 && (
+                        <div style={{
+                          background: 'rgba(0,0,0,0.9)',
+                          borderRadius: '12px',
+                          padding: '20px',
+                          marginTop: '16px',
+                          textAlign: 'center',
+                          border: '2px solid #f59e0b'
+                        }}>
+                          <p style={{ fontSize: '24px', marginBottom: '8px' }}>⏸️</p>
+                          <p style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
+                            Waiting for buffering...
+                          </p>
+                          <p style={{ fontSize: '14px', opacity: 0.8 }}>
+                            {bufferingUsers.join(', ')} {bufferingUsers.length === 1 ? 'is' : 'are'} buffering
+                          </p>
+                        </div>
+                      )}
                       
                       <div style={{ marginTop: '20px' }}>
                         <h4 style={{ fontSize: '18px', marginBottom: '8px' }}>
@@ -1115,65 +1220,72 @@ socketRef.current.on('tab-changed', ({ tab }) => {
                           {currentVideo.artist}
                         </p>
                         
+                        {/* Video Controls - Host Only */}
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '20px' }}>
-                          <button
-                            onClick={previousVideo}
-                            disabled={currentVideoIndex === 0}
-                            style={{
+                          {isHost ? (
+                            <>
+                              <button
+                                onClick={previousVideo}
+                                disabled={currentVideoIndex === 0}
+                                style={{
+                                  background: 'rgba(255,255,255,0.1)',
+                                  border: 'none',
+                                  color: isDarkMode ? 'white' : '#111',
+                                  padding: '12px 24px',
+                                  borderRadius: '8px',
+                                  cursor: currentVideoIndex === 0 ? 'not-allowed' : 'pointer',
+                                  opacity: currentVideoIndex === 0 ? 0.3 : 1,
+                                  fontSize: '16px'
+                                }}
+                              >
+                                ⏮ Previous
+                              </button>
+                              
+                              <button
+                                onClick={togglePlay}
+                                style={{
+                                  background: 'linear-gradient(90deg, #ec4899, #a855f7)',
+                                  border: 'none',
+                                  color: 'white',
+                                  padding: '12px 32px',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer',
+                                  fontSize: '18px',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                {isPlaying ? '⏸ Pause' : '▶ Play'}
+                              </button>
+                              
+                              <button
+                                onClick={nextVideo}
+                                disabled={currentVideoIndex >= videoQueue.length - 1}
+                                style={{
+                                  background: 'rgba(255,255,255,0.1)',
+                                  border: 'none',
+                                  color: isDarkMode ? 'white' : '#111',
+                                  padding: '12px 24px',
+                                  borderRadius: '8px',
+                                  cursor: currentVideoIndex >= videoQueue.length - 1 ? 'not-allowed' : 'pointer',
+                                  opacity: currentVideoIndex >= videoQueue.length - 1 ? 0.3 : 1,
+                                  fontSize: '16px'
+                                }}
+                              >
+                                Next ⏭
+                              </button>
+                            </>
+                          ) : (
+                            <div style={{
                               background: 'rgba(255,255,255,0.1)',
-                              border: 'none',
-                              color: isDarkMode ? 'white' : '#111',
-                              padding: '12px 24px',
+                              padding: '16px',
                               borderRadius: '8px',
-                              cursor: currentVideoIndex === 0 ? 'not-allowed' : 'pointer',
-                              opacity: currentVideoIndex === 0 ? 0.3 : 1,
-                              fontSize: '16px'
-                            }}
-                          >
-                            ⏮ Previous
-                          </button>
-                          
-                          <button
-  onClick={() => {
-    const newState = !isPlaying;
-    setIsPlaying(newState);
-    
-    if (socketRef.current && activeRoom) {
-      socketRef.current.emit(newState ? 'video-play' : 'video-pause', { 
-        roomCode: activeRoom.code 
-      });
-    }
-  }}
-  style={{
-    background: 'linear-gradient(90deg, #ec4899, #a855f7)',
-    border: 'none',
-    color: 'white',
-    padding: '12px 32px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '18px',
-    fontWeight: 'bold'
-  }}
->
-  {isPlaying ? '⏸ Pause' : '▶ Play'}
-</button>
-                          
-                          <button
-                            onClick={nextVideo}
-                            disabled={currentVideoIndex >= videoQueue.length - 1}
-                            style={{
-                              background: 'rgba(255,255,255,0.1)',
-                              border: 'none',
-                              color: isDarkMode ? 'white' : '#111',
-                              padding: '12px 24px',
-                              borderRadius: '8px',
-                              cursor: currentVideoIndex >= videoQueue.length - 1 ? 'not-allowed' : 'pointer',
-                              opacity: currentVideoIndex >= videoQueue.length - 1 ? 0.3 : 1,
-                              fontSize: '16px'
-                            }}
-                          >
-                            Next ⏭
-                          </button>
+                              textAlign: 'center'
+                            }}>
+                              <p style={{ fontSize: '14px', opacity: 0.8 }}>
+                                👑 Host ({participants.find(p => p.isHost)?.name}) controls playback
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </>
@@ -1271,7 +1383,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
                 </div>
               </div>
               
-              {/* Video Queue */}
+              {/* Video Queue Column */}
               <div style={s.card}>
                 <h3 style={{ fontSize: '18px', marginBottom: '12px' }}>📋 Video Queue ({videoQueue.length})</h3>
                 <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
@@ -1334,7 +1446,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
         </div>
 
         {/* Audio Player (only for music tab) */}
-        {activeTab === 'music' && currentTrack?.type !== 'youtube' && (
+        {activeTab === 'music' && currentTrack && (
           <AudioPlayer
             track={currentTrack}
             isPlaying={isPlaying}

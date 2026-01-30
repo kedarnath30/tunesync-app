@@ -13,7 +13,7 @@ const io = socketIO(server, {
     origin: [
       "http://localhost:3000",
       "https://tunesync-app.vercel.app",
-      /https:\/\/tunesync-.*\.vercel\.app$/ // Allows all Vercel preview deployments
+      /https:\/\/tunesync-.*\.vercel\.app$/
     ],
     methods: ['GET', 'POST'],
     credentials: true
@@ -53,7 +53,15 @@ io.on('connection', (socket) => {
     
     rooms.set(roomCode, {
       ...roomData,
-      participants: [{ userId, userName, avatar, socketId: socket.id }],
+      participants: [{ 
+        userId, 
+        userName, 
+        avatar, 
+        socketId: socket.id,
+        isHost: true,
+        isBuffering: false
+      }],
+      hostId: userId,
       queue: [
         { id: 1, title: 'Shape of You', artist: 'Ed Sheeran', duration: '3:45', type: 'itunes' },
         { id: 2, title: 'Blinding Lights', artist: 'The Weeknd', duration: '3:20', type: 'itunes' },
@@ -64,10 +72,11 @@ io.on('connection', (socket) => {
       volume: 70,
       isShuffle: false,
       repeatMode: 'off',
-      // Video properties
       videoQueue: [],
       currentVideoIndex: 0,
-      activeTab: 'music'
+      activeTab: 'music',
+      currentVideoTime: 0,
+      bufferingUsers: []
     });
 
     socket.join(roomCode);
@@ -80,10 +89,16 @@ io.on('connection', (socket) => {
     
     const room = rooms.get(roomCode);
     if (room) {
-      // Add participant if not already in room
       const existingParticipant = room.participants.find(p => p.userId === userId);
       if (!existingParticipant) {
-        room.participants.push({ userId, userName, avatar, socketId: socket.id });
+        room.participants.push({ 
+          userId, 
+          userName, 
+          avatar, 
+          socketId: socket.id,
+          isHost: false,
+          isBuffering: false
+        });
       } else {
         existingParticipant.socketId = socket.id;
       }
@@ -122,7 +137,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Queue management
   socket.on('add-to-queue', ({ roomCode, track }) => {
     const room = rooms.get(roomCode);
     if (room) {
@@ -131,7 +145,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Volume control
   socket.on('volume-change', ({ roomCode, volume }) => {
     const room = rooms.get(roomCode);
     if (room) {
@@ -140,7 +153,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Shuffle toggle
   socket.on('toggle-shuffle', ({ roomCode, isShuffle }) => {
     const room = rooms.get(roomCode);
     if (room) {
@@ -149,7 +161,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Repeat mode
   socket.on('change-repeat', ({ roomCode, repeatMode }) => {
     const room = rooms.get(roomCode);
     if (room) {
@@ -158,24 +169,27 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Chat
   socket.on('chat-message', ({ roomCode, message }) => {
     io.to(roomCode).emit('chat-message', message);
   });
 
-  // Reactions
   socket.on('add-reaction', ({ roomCode, reaction }) => {
     io.to(roomCode).emit('reaction-added', reaction);
   });
 
-  // VIDEO SYNC - New events for video functionality
+  // VIDEO SYNC WITH HOST CONTROLS
   socket.on('sync-video', ({ roomCode, videoIndex }) => {
     console.log('Syncing video:', roomCode, videoIndex);
     const room = rooms.get(roomCode);
     if (room) {
-      room.currentVideoIndex = videoIndex;
-      room.isPlaying = true;
-      io.to(roomCode).emit('video-changed', { videoIndex });
+      const sender = room.participants.find(p => p.socketId === socket.id);
+      if (sender && sender.isHost) {
+        room.currentVideoIndex = videoIndex;
+        room.isPlaying = true;
+        io.to(roomCode).emit('video-changed', { videoIndex });
+      } else {
+        socket.emit('error', { message: 'Only host can change videos' });
+      }
     }
   });
 
@@ -193,7 +207,6 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (room) {
       room.activeTab = tab;
-      // Broadcast to all users in room except sender
       socket.to(roomCode).emit('tab-changed', { tab });
     }
   });
@@ -201,16 +214,81 @@ io.on('connection', (socket) => {
   socket.on('video-play', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (room) {
-      room.isPlaying = true;
-      io.to(roomCode).emit('sync-play');
+      const sender = room.participants.find(p => p.socketId === socket.id);
+      if (sender && sender.isHost) {
+        room.isPlaying = true;
+        io.to(roomCode).emit('sync-play');
+      }
     }
   });
 
   socket.on('video-pause', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (room) {
-      room.isPlaying = false;
-      io.to(roomCode).emit('sync-pause');
+      const sender = room.participants.find(p => p.socketId === socket.id);
+      if (sender && sender.isHost) {
+        room.isPlaying = false;
+        io.to(roomCode).emit('sync-pause');
+      }
+    }
+  });
+
+  // TIMESTAMP SYNC
+  socket.on('video-timestamp-update', ({ roomCode, currentTime, isPlaying }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      const sender = room.participants.find(p => p.socketId === socket.id);
+      if (sender && sender.isHost) {
+        room.currentVideoTime = currentTime;
+        room.isPlaying = isPlaying;
+        socket.to(roomCode).emit('sync-video-timestamp', { currentTime, isPlaying });
+      }
+    }
+  });
+
+  // BUFFERING DETECTION
+  socket.on('user-buffering', ({ roomCode, isBuffering, userId, userName }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      const participant = room.participants.find(p => p.userId === userId);
+      if (participant) {
+        participant.isBuffering = isBuffering;
+        
+        if (isBuffering) {
+          if (!room.bufferingUsers.includes(userName)) {
+            room.bufferingUsers.push(userName);
+          }
+        } else {
+          room.bufferingUsers = room.bufferingUsers.filter(u => u !== userName);
+        }
+        
+        io.to(roomCode).emit('buffering-status-update', {
+          bufferingUsers: room.bufferingUsers,
+          shouldPause: room.bufferingUsers.length > 0
+        });
+      }
+    }
+  });
+
+  // TRANSFER HOST
+  socket.on('transfer-host', ({ roomCode, newHostId }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      const sender = room.participants.find(p => p.socketId === socket.id);
+      
+      if (sender && sender.isHost) {
+        sender.isHost = false;
+        const newHost = room.participants.find(p => p.userId === newHostId);
+        if (newHost) {
+          newHost.isHost = true;
+          room.hostId = newHostId;
+          io.to(roomCode).emit('host-changed', {
+            newHostId,
+            newHostName: newHost.userName,
+            participants: room.participants
+          });
+        }
+      }
     }
   });
 
@@ -218,17 +296,28 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
-    // Remove participant from all rooms
     rooms.forEach((room, roomCode) => {
       const participantIndex = room.participants.findIndex(p => p.socketId === socket.id);
       if (participantIndex !== -1) {
+        const leavingParticipant = room.participants[participantIndex];
+        const wasHost = leavingParticipant.isHost;
+        
         room.participants.splice(participantIndex, 1);
         
-        // Notify remaining participants
+        if (wasHost && room.participants.length > 0) {
+          room.participants[0].isHost = true;
+          room.hostId = room.participants[0].userId;
+          
+          io.to(roomCode).emit('host-changed', {
+            newHostId: room.participants[0].userId,
+            newHostName: room.participants[0].userName,
+            participants: room.participants
+          });
+        }
+        
         if (room.participants.length > 0) {
           io.to(roomCode).emit('participants-updated', room.participants);
         } else {
-          // Delete empty rooms
           rooms.delete(roomCode);
           console.log('Room deleted:', roomCode);
         }
@@ -237,7 +326,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`TuneSync server running on port ${PORT}`);
