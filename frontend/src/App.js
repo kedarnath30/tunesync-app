@@ -81,15 +81,18 @@ function App() {
         if (room.repeatMode !== undefined) setRepeatMode(room.repeatMode);
       });
       socketRef.current.on('video-changed', ({ videoIndex }) => {
+  console.log('Video changed event received:', videoIndex);
   setCurrentVideoIndex(videoIndex);
   setIsPlaying(true);
 });
 
 socketRef.current.on('video-queue-updated', (newVideoQueue) => {
+  console.log('Video queue updated:', newVideoQueue.length);
   setVideoQueue(newVideoQueue);
 });
 
 socketRef.current.on('tab-changed', ({ tab }) => {
+  console.log('Tab changed event received:', tab);
   setActiveTab(tab);
 });
       socketRef.current.on('participants-updated', (p) => 
@@ -301,10 +304,10 @@ socketRef.current.on('tab-changed', ({ tab }) => {
 };
 
   const playVideo = (index) => {
+  console.log('Playing video at index:', index);
   setCurrentVideoIndex(index);
   setIsPlaying(true);
   
-  // Add socket sync
   if (socketRef.current && activeRoom) {
     socketRef.current.emit('sync-video', { 
       roomCode: activeRoom.code, 
@@ -314,18 +317,36 @@ socketRef.current.on('tab-changed', ({ tab }) => {
 };
 
   const nextVideo = () => {
-    if (currentVideoIndex < videoQueue.length - 1) {
-      setCurrentVideoIndex(currentVideoIndex + 1);
-      setIsPlaying(true);
+  if (currentVideoIndex < videoQueue.length - 1) {
+    const newIndex = currentVideoIndex + 1;
+    console.log('Next video:', newIndex);
+    setCurrentVideoIndex(newIndex);
+    setIsPlaying(true);
+    
+    if (socketRef.current && activeRoom) {
+      socketRef.current.emit('sync-video', { 
+        roomCode: activeRoom.code, 
+        videoIndex: newIndex 
+      });
     }
-  };
+  }
+};
 
   const previousVideo = () => {
-    if (currentVideoIndex > 0) {
-      setCurrentVideoIndex(currentVideoIndex - 1);
-      setIsPlaying(true);
+  if (currentVideoIndex > 0) {
+    const newIndex = currentVideoIndex - 1;
+    console.log('Previous video:', newIndex);
+    setCurrentVideoIndex(newIndex);
+    setIsPlaying(true);
+    
+    if (socketRef.current && activeRoom) {
+      socketRef.current.emit('sync-video', { 
+        roomCode: activeRoom.code, 
+        videoIndex: newIndex 
+      });
     }
-  };
+  }
+};
 
   const sendMessage = () => {
     if (message.trim() && socketRef.current && activeRoom) {
@@ -651,11 +672,22 @@ socketRef.current.on('tab-changed', ({ tab }) => {
           {/* Tab Navigation */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
             <button
-              onClick={() => {
-                setActiveTab('music');
-                setSearchResults([]);
-                setSearchQuery('');
-              }}
+  onClick={() => {
+    setActiveTab('music');
+    setSearchResults([]);
+    setSearchQuery('');
+    
+    if (socketRef.current && activeRoom) {
+      socketRef.current.emit('sync-tab-change', { 
+        roomCode: activeRoom.code, 
+        tab: 'music' 
+      });
+    }
+  }}
+  // ...styles
+>
+  🎵 Music
+</button>
               style={{
                 flex: 1,
                 padding: '12px',
@@ -1102,20 +1134,29 @@ socketRef.current.on('tab-changed', ({ tab }) => {
                           </button>
                           
                           <button
-                            onClick={togglePlay}
-                            style={{
-                              background: 'linear-gradient(90deg, #ec4899, #a855f7)',
-                              border: 'none',
-                              color: 'white',
-                              padding: '12px 32px',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              fontSize: '18px',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            {isPlaying ? '⏸ Pause' : '▶ Play'}
-                          </button>
+  onClick={() => {
+    const newState = !isPlaying;
+    setIsPlaying(newState);
+    
+    if (socketRef.current && activeRoom) {
+      socketRef.current.emit(newState ? 'video-play' : 'video-pause', { 
+        roomCode: activeRoom.code 
+      });
+    }
+  }}
+  style={{
+    background: 'linear-gradient(90deg, #ec4899, #a855f7)',
+    border: 'none',
+    color: 'white',
+    padding: '12px 32px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '18px',
+    fontWeight: 'bold'
+  }}
+>
+  {isPlaying ? '⏸ Pause' : '▶ Play'}
+</button>
                           
                           <button
                             onClick={nextVideo}
