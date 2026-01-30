@@ -22,15 +22,20 @@ const EnhancedYouTubePlayer = ({
   const initializePlayer = useCallback(() => {
     if (!iframeRef.current || playerRef.current) return;
 
+    const currentOrigin = window.location.origin;
+
     new window.YT.Player(iframeRef.current, {
       videoId: videoId,
+      host: 'https://www.youtube.com',
       playerVars: {
         autoplay: 0,
         controls: isHost ? 1 : 0,
         modestbranding: 1,
         rel: 0,
         fs: 1,
-        enablejsapi: 1
+        enablejsapi: 1,
+        origin: currentOrigin,
+        widget_referrer: currentOrigin
       },
       events: {
         onReady: (event) => {
@@ -42,12 +47,16 @@ const EnhancedYouTubePlayer = ({
           if (isHost) {
             syncIntervalRef.current = setInterval(() => {
               if (playerRef.current && playerRef.current.getCurrentTime) {
-                const currentTime = playerRef.current.getCurrentTime();
-                const playerState = playerRef.current.getPlayerState();
-                
-                if (onTimeUpdate && Math.abs(currentTime - lastSyncTime.current) > 1) {
-                  onTimeUpdate(currentTime, playerState === 1);
-                  lastSyncTime.current = currentTime;
+                try {
+                  const currentTime = playerRef.current.getCurrentTime();
+                  const playerState = playerRef.current.getPlayerState();
+                  
+                  if (onTimeUpdate && Math.abs(currentTime - lastSyncTime.current) > 1) {
+                    onTimeUpdate(currentTime, playerState === 1);
+                    lastSyncTime.current = currentTime;
+                  }
+                } catch (e) {
+                  console.log('Error getting player time:', e);
                 }
               }
             }, 2000);
@@ -105,12 +114,16 @@ const EnhancedYouTubePlayer = ({
 
   useEffect(() => {
     if (!isHost && player && syncToTime !== null && syncToTime !== undefined) {
-      const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-      const timeDiff = Math.abs(currentTime - syncToTime);
-      
-      if (timeDiff > 3) {
-        console.log(`Syncing: Current ${currentTime}s, Target ${syncToTime}s, Diff ${timeDiff}s`);
-        player.seekTo(syncToTime, true);
+      try {
+        const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+        const timeDiff = Math.abs(currentTime - syncToTime);
+        
+        if (timeDiff > 3) {
+          console.log(`Syncing: Current ${currentTime}s, Target ${syncToTime}s, Diff ${timeDiff}s`);
+          player.seekTo(syncToTime, true);
+        }
+      } catch (e) {
+        console.log('Error syncing video time:', e);
       }
     }
   }, [syncToTime, isHost, player]);
@@ -118,23 +131,31 @@ const EnhancedYouTubePlayer = ({
   useEffect(() => {
     if (!player) return;
 
-    const playerState = player.getPlayerState ? player.getPlayerState() : -1;
-    
-    if (isPlaying && playerState !== 1) {
-      console.log('Play requested');
-      player.playVideo();
-    } else if (!isPlaying && playerState === 1) {
-      console.log('Pause requested');
-      player.pauseVideo();
+    try {
+      const playerState = player.getPlayerState ? player.getPlayerState() : -1;
+      
+      if (isPlaying && playerState !== 1) {
+        console.log('Play requested');
+        player.playVideo();
+      } else if (!isPlaying && playerState === 1) {
+        console.log('Pause requested');
+        player.pauseVideo();
+      }
+    } catch (e) {
+      console.log('Error controlling playback:', e);
     }
   }, [isPlaying, player]);
 
   useEffect(() => {
     if (player && player.loadVideoById) {
-      console.log('Loading new video:', videoId);
-      player.loadVideoById(videoId);
-      if (isPlaying) {
-        player.playVideo();
+      try {
+        console.log('Loading new video:', videoId);
+        player.loadVideoById(videoId);
+        if (isPlaying) {
+          player.playVideo();
+        }
+      } catch (e) {
+        console.log('Error loading video:', e);
       }
     }
   }, [videoId, player, isPlaying]);
