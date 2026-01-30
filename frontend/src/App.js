@@ -162,8 +162,8 @@ function App() {
       });
       
       // Buffering status
-      socketRef.current.on('buffering-status-update', ({ BufferingUsersufferingUsers: newBufferingUsers }) => {
-        console.log('Buffering users:', newBufferingUsersufferingUsers);
+      socketRef.current.on('buffering-status-update', ({ bufferingUsers: newBufferingUsers }) => {
+        console.log('Buffering users:', newBufferingUsers);
         setBufferingUsers(newBufferingUsers);
         
         // Don't auto-pause - just show the buffering overlay
