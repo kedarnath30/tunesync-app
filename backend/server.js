@@ -105,6 +105,23 @@ io.on('connection', (socket) => {
 
       socket.join(roomCode);
       socket.emit('room-state', room);
+      
+      // If there's a video playing, sync new user immediately
+      if (room.videoQueue.length > 0 && room.currentVideoIndex >= 0) {
+        setTimeout(() => {
+          socket.emit('video-changed', { 
+            videoIndex: room.currentVideoIndex 
+          });
+          
+          if (room.currentVideoTime > 0) {
+            socket.emit('sync-video-timestamp', {
+              currentTime: room.currentVideoTime,
+              isPlaying: room.isPlaying
+            });
+          }
+        }, 1000);
+      }
+      
       io.to(roomCode).emit('participants-updated', room.participants);
     } else {
       socket.emit('error', { message: 'Room not found' });

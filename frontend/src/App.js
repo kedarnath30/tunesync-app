@@ -149,9 +149,10 @@ function App() {
       });
       
       socketRef.current.on('tab-changed', ({ tab }) => {
-        console.log('Tab changed event received:', tab);
-        setActiveTab(tab);
-      });
+  console.log('Tab changed event received:', tab);
+  // Let users stay on their preferred tab
+  // setActiveTab(tab);  // DISABLED
+});
       
       // Timestamp sync from host
       socketRef.current.on('sync-video-timestamp', ({ currentTime, isPlaying }) => {
@@ -161,16 +162,12 @@ function App() {
       });
       
       // Buffering status
-      socketRef.current.on('buffering-status-update', ({ bufferingUsers, shouldPause }) => {
-        console.log('Buffering users:', bufferingUsers);
-        setBufferingUsers(bufferingUsers);
+      socketRef.current.on('buffering-status-update', ({ bufferingUsers: newBufferingUsers }) => {
+        console.log('Buffering users:', newBufferingUsersufferingUsers);
+        setBufferingUsers(newBufferingUsers);
         
-        // Auto-pause if someone is buffering (only for non-hosts)
-        if (shouldPause && !isHost && bufferingUsers.length > 0) {
-          setIsPlaying(false);
-        } else if (!shouldPause && bufferingUsers.length === 0) {
-          setIsPlaying(true);
-        }
+        // Don't auto-pause - just show the buffering overlay
+            
       });
       
       // Host changed
@@ -739,16 +736,11 @@ function App() {
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
             <button
               onClick={() => {
-                setActiveTab('music');
-                setSearchResults([]);
-                setSearchQuery('');
-                if (socketRef.current && activeRoom) {
-                  socketRef.current.emit('sync-tab-change', { 
-                    roomCode: activeRoom.code, 
-                    tab: 'music' 
-                  });
-                }
-              }}
+  setActiveTab('music');
+  setSearchResults([]);
+  setSearchQuery('');
+  // Users can switch tabs independently
+}}
               style={{
                 flex: 1,
                 padding: '12px',
@@ -767,16 +759,11 @@ function App() {
             
             <button
               onClick={() => {
-                setActiveTab('videos');
-                setSearchResults([]);
-                setSearchQuery('');
-                if (socketRef.current && activeRoom) {
-                  socketRef.current.emit('sync-tab-change', { 
-                    roomCode: activeRoom.code, 
-                    tab: 'videos' 
-                  });
-                }
-              }}
+  setActiveTab('videos');
+  setSearchResults([]);
+  setSearchQuery('');
+  // Users can switch tabs independently
+}}
               style={{
                 flex: 1,
                 padding: '12px',
@@ -1173,15 +1160,9 @@ function App() {
                           }
                         }}
                         onBuffering={(buffering) => {
-                          if (socketRef.current && activeRoom) {
-                            socketRef.current.emit('user-buffering', {
-                              roomCode: activeRoom.code,
-                              isBuffering: buffering,
-                              userId: Date.now(),
-                              userName: userName
-                            });
-                          }
-                        }}
+  // DISABLED - was causing pause/play loop
+  console.log('Buffering:', buffering);
+}}
                         onReady={(player) => {
                           console.log('Player ready');
                         }}
