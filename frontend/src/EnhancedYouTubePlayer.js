@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 const EnhancedYouTubePlayer = ({ 
   videoId, 
@@ -19,33 +19,10 @@ const EnhancedYouTubePlayer = ({
   const lastSyncTime = useRef(0);
   const syncIntervalRef = useRef(null);
 
-  // Load YouTube IFrame API
-  useEffect(() => {
-    if (window.YT && window.YT.Player) {
-      initializePlayer();
-      return;
-    }
-
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-    window.onYouTubeIframeAPIReady = () => {
-      initializePlayer();
-    };
-
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-    };
-  }, [videoId]);
-
-  const initializePlayer = () => {
+  const initializePlayer = useCallback(() => {
     if (!iframeRef.current || playerRef.current) return;
 
-    const newPlayer = new window.YT.Player(iframeRef.current, {
+    new window.YT.Player(iframeRef.current, {
       videoId: videoId,
       playerVars: {
         autoplay: 0,
@@ -102,7 +79,29 @@ const EnhancedYouTubePlayer = ({
         }
       }
     });
-  };
+  }, [videoId, isHost, onReady, onTimeUpdate, onBuffering, onEnded, socket, roomCode]);
+
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      initializePlayer();
+      return;
+    }
+
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    window.onYouTubeIframeAPIReady = () => {
+      initializePlayer();
+    };
+
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+    };
+  }, [initializePlayer]);
 
   useEffect(() => {
     if (!isHost && player && syncToTime !== null && syncToTime !== undefined) {
@@ -138,7 +137,7 @@ const EnhancedYouTubePlayer = ({
         player.playVideo();
       }
     }
-  }, [videoId, player]);
+  }, [videoId, player, isPlaying]);
 
   return (
     <div style={{

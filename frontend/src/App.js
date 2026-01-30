@@ -190,7 +190,7 @@ function App() {
         }
       });
     }
-  }, [userName]);
+  }, [userName, isHost]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
