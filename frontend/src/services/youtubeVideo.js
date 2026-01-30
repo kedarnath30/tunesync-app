@@ -44,4 +44,5 @@ export const searchYouTubeVideos = async (query) => {
   }
 };
 
-export default { searchYouTubeVideos };
+const youtubeService = { searchYouTubeVideos };
+export default youtubeService;
