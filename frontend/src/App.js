@@ -162,7 +162,7 @@ function App() {
       });
       
       // Buffering status
-      socketRef.current.on('buffering-status-update', ({ bufferingUsers: newBufferingUsers }) => {
+      socketRef.current.on('buffering-status-update', ({ BufferingUsersufferingUsers: newBufferingUsers }) => {
         console.log('Buffering users:', newBufferingUsersufferingUsers);
         setBufferingUsers(newBufferingUsers);
         
