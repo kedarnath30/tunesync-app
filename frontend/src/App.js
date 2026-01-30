@@ -421,7 +421,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
       boxShadow: '0 4px 15px rgba(236, 72, 153, 0.3)'
     }
   };
-
+    // Add CSS animation
   const styleSheet = document.createElement("style");
   styleSheet.textContent = `
     @keyframes fadeIn {
@@ -688,6 +688,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
 >
   🎵 Music
 </button>
+<button
               style={{
                 flex: 1,
                 padding: '12px',
@@ -702,8 +703,7 @@ socketRef.current.on('tab-changed', ({ tab }) => {
               }}
             >
               🎵 Music
-            </button>
-            
+                </button>      
             <button
               onClick={() => {
   setActiveTab('videos');
