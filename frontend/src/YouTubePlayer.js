@@ -5,7 +5,7 @@ const YouTubePlayer = ({ videoId, isPlaying, onEnded }) => {
     <div style={{
       width: '100%',
       maxWidth: '560px',
-      margin: '0 auto 20px',
+      margin: '0 auto',
       borderRadius: '12px',
       overflow: 'hidden',
       boxShadow: '0 10px 40px rgba(0,0,0,0.3)'
