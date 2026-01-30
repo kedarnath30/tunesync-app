@@ -1,150 +1,245 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const socketIO = require('socket.io');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
-
 const server = http.createServer(app);
-const io = socketIo(server, {
+
+// CORS configuration
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const io = socketIO(server, {
   cors: {
     origin: [
-  "http://localhost:3000",
-  "https://tunesync-app.vercel.app",
-  /https:\/\/tunesync-.*\.vercel\.app$/ // Allows all Vercel preview deployments
-],
-    methods: ["GET", "POST"]
+      "http://localhost:3000",
+      "https://tunesync-app.vercel.app",
+      /https:\/\/tunesync-.*\.vercel\.app$/ // Allows all Vercel preview deployments
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
-const rooms = {};
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://tunesync-app.vercel.app",
+    /https:\/\/tunesync-.*\.vercel\.app$/
+  ],
+  credentials: true
+}));
 
+app.use(express.json());
+
+// In-memory storage for rooms
+const rooms = new Map();
+
+// Test endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'TuneSync Server Running',
+    rooms: rooms.size,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('New client connected:', socket.id);
 
+  // Create room
   socket.on('create-room', ({ roomCode, roomData, userId, userName, avatar }) => {
-    rooms[roomCode] = {
+    console.log('Creating room:', roomCode);
+    
+    rooms.set(roomCode, {
       ...roomData,
-      participants: [{ userId, userName, socketId: socket.id, avatar: avatar || '👤' }],
-      queue: [],
+      participants: [{ userId, userName, avatar, socketId: socket.id }],
+      queue: [
+        { id: 1, title: 'Shape of You', artist: 'Ed Sheeran', duration: '3:45', type: 'itunes' },
+        { id: 2, title: 'Blinding Lights', artist: 'The Weeknd', duration: '3:20', type: 'itunes' },
+        { id: 3, title: 'Levitating', artist: 'Dua Lipa', duration: '3:23', type: 'itunes' }
+      ],
       currentTrackIndex: 0,
       isPlaying: false,
       volume: 70,
       isShuffle: false,
-      repeatMode: 'off'
-    };
+      repeatMode: 'off',
+      // Video properties
+      videoQueue: [],
+      currentVideoIndex: 0,
+      activeTab: 'music'
+    });
+
     socket.join(roomCode);
-    socket.emit('room-state', rooms[roomCode]);
-    console.log('Room created:', roomCode, 'by', userName);
+    socket.emit('room-state', rooms.get(roomCode));
   });
 
+  // Join room
   socket.on('join-room', ({ roomCode, userId, userName, avatar }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].participants.push({ userId, userName, socketId: socket.id, avatar: avatar || '👤' });
+    console.log('User joining room:', roomCode, userName);
+    
+    const room = rooms.get(roomCode);
+    if (room) {
+      // Add participant if not already in room
+      const existingParticipant = room.participants.find(p => p.userId === userId);
+      if (!existingParticipant) {
+        room.participants.push({ userId, userName, avatar, socketId: socket.id });
+      } else {
+        existingParticipant.socketId = socket.id;
+      }
+
       socket.join(roomCode);
-      socket.emit('room-state', rooms[roomCode]);
-      io.to(roomCode).emit('participants-updated', rooms[roomCode].participants);
-      console.log('User joined room:', roomCode, userName);
+      socket.emit('room-state', room);
+      io.to(roomCode).emit('participants-updated', room.participants);
     } else {
       socket.emit('error', { message: 'Room not found' });
     }
   });
 
+  // Music playback controls
   socket.on('play', ({ roomCode }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].isPlaying = true;
-      socket.to(roomCode).emit('sync-play');
-      console.log('Play in room:', roomCode);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.isPlaying = true;
+      io.to(roomCode).emit('sync-play');
     }
   });
 
   socket.on('pause', ({ roomCode }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].isPlaying = false;
-      socket.to(roomCode).emit('sync-pause');
-      console.log('Pause in room:', roomCode);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.isPlaying = false;
+      io.to(roomCode).emit('sync-pause');
     }
   });
 
   socket.on('change-track', ({ roomCode, trackIndex }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].currentTrackIndex = trackIndex;
-      rooms[roomCode].isPlaying = true;
-      socket.to(roomCode).emit('sync-track-change', { trackIndex });
-      console.log('Track changed in room:', roomCode, 'to index:', trackIndex);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.currentTrackIndex = trackIndex;
+      room.isPlaying = true;
+      io.to(roomCode).emit('sync-track-change', { trackIndex });
     }
   });
 
+  // Queue management
   socket.on('add-to-queue', ({ roomCode, track }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].queue.push(track);
-      io.to(roomCode).emit('queue-updated', rooms[roomCode].queue);
-      console.log('Track added to queue in room:', roomCode);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.queue.push(track);
+      io.to(roomCode).emit('queue-updated', room.queue);
     }
   });
 
-  socket.on('chat-message', ({ roomCode, message }) => {
-    socket.to(roomCode).emit('chat-message', message);
-    console.log('Chat message in room:', roomCode, 'from', message.userName);
-  });
-
-  socket.on('add-reaction', ({ roomCode, reaction }) => {
-    socket.to(roomCode).emit('reaction-added', reaction);
-    console.log('Reaction added in room:', roomCode);
-  });
-
-  // New: Volume control
+  // Volume control
   socket.on('volume-change', ({ roomCode, volume }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].volume = volume;
-      socket.to(roomCode).emit('volume-changed', { volume });
-      console.log('Volume changed in room:', roomCode, 'to', volume);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.volume = volume;
+      io.to(roomCode).emit('volume-changed', { volume });
     }
   });
 
-  // New: Shuffle toggle
+  // Shuffle toggle
   socket.on('toggle-shuffle', ({ roomCode, isShuffle }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].isShuffle = isShuffle;
-      socket.to(roomCode).emit('shuffle-toggled', { isShuffle });
-      console.log('Shuffle toggled in room:', roomCode, 'to', isShuffle);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.isShuffle = isShuffle;
+      io.to(roomCode).emit('shuffle-toggled', { isShuffle });
     }
   });
 
-  // New: Repeat mode change
+  // Repeat mode
   socket.on('change-repeat', ({ roomCode, repeatMode }) => {
-    if (rooms[roomCode]) {
-      rooms[roomCode].repeatMode = repeatMode;
-      socket.to(roomCode).emit('repeat-changed', { repeatMode });
-      console.log('Repeat mode changed in room:', roomCode, 'to', repeatMode);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.repeatMode = repeatMode;
+      io.to(roomCode).emit('repeat-changed', { repeatMode });
     }
   });
 
+  // Chat
+  socket.on('chat-message', ({ roomCode, message }) => {
+    io.to(roomCode).emit('chat-message', message);
+  });
+
+  // Reactions
+  socket.on('add-reaction', ({ roomCode, reaction }) => {
+    io.to(roomCode).emit('reaction-added', reaction);
+  });
+
+  // VIDEO SYNC - New events for video functionality
+  socket.on('sync-video', ({ roomCode, videoIndex }) => {
+    console.log('Syncing video:', roomCode, videoIndex);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.currentVideoIndex = videoIndex;
+      room.isPlaying = true;
+      io.to(roomCode).emit('video-changed', { videoIndex });
+    }
+  });
+
+  socket.on('add-video-to-queue', ({ roomCode, video }) => {
+    console.log('Adding video to queue:', roomCode);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.videoQueue.push(video);
+      io.to(roomCode).emit('video-queue-updated', room.videoQueue);
+    }
+  });
+
+  socket.on('sync-tab-change', ({ roomCode, tab }) => {
+    console.log('Tab changed:', roomCode, tab);
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.activeTab = tab;
+      // Broadcast to all users in room except sender
+      socket.to(roomCode).emit('tab-changed', { tab });
+    }
+  });
+
+  socket.on('video-play', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.isPlaying = true;
+      io.to(roomCode).emit('sync-play');
+    }
+  });
+
+  socket.on('video-pause', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.isPlaying = false;
+      io.to(roomCode).emit('sync-pause');
+    }
+  });
+
+  // Disconnect handling
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    // Remove user from rooms
-    Object.keys(rooms).forEach(roomCode => {
-      const room = rooms[roomCode];
-      const participant = room.participants.find(p => p.socketId === socket.id);
-      
-      room.participants = room.participants.filter(p => p.socketId !== socket.id);
-      
-      if (room.participants.length === 0) {
-        console.log('Room deleted (empty):', roomCode);
-        delete rooms[roomCode];
-      } else {
-        io.to(roomCode).emit('participants-updated', room.participants);
-        if (participant) {
-          console.log('User left room:', roomCode, participant.userName);
+    console.log('Client disconnected:', socket.id);
+    
+    // Remove participant from all rooms
+    rooms.forEach((room, roomCode) => {
+      const participantIndex = room.participants.findIndex(p => p.socketId === socket.id);
+      if (participantIndex !== -1) {
+        room.participants.splice(participantIndex, 1);
+        
+        // Notify remaining participants
+        if (room.participants.length > 0) {
+          io.to(roomCode).emit('participants-updated', room.participants);
+        } else {
+          // Delete empty rooms
+          rooms.delete(roomCode);
+          console.log('Room deleted:', roomCode);
         }
       }
     });
   });
 });
 
+// Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`🎵 TuneSync Server running on http://localhost:${PORT}`);
-  console.log('Waiting for connections...');
+  console.log(`TuneSync server running on port ${PORT}`);
+  console.log(`CORS enabled for: ${FRONTEND_URL}`);
 });

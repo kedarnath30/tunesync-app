@@ -80,7 +80,18 @@ function App() {
         if (room.isShuffle !== undefined) setIsShuffle(room.isShuffle);
         if (room.repeatMode !== undefined) setRepeatMode(room.repeatMode);
       });
-      
+      socketRef.current.on('video-changed', ({ videoIndex }) => {
+  setCurrentVideoIndex(videoIndex);
+  setIsPlaying(true);
+});
+
+socketRef.current.on('video-queue-updated', (newVideoQueue) => {
+  setVideoQueue(newVideoQueue);
+});
+
+socketRef.current.on('tab-changed', ({ tab }) => {
+  setActiveTab(tab);
+});
       socketRef.current.on('participants-updated', (p) => 
         setParticipants(p.map(x => ({ name: x.userName, avatar: x.avatar || '👤' })))
       );
@@ -275,15 +286,32 @@ function App() {
   };
 
   const addVideoToQueue = (video) => {
-    setVideoQueue([...videoQueue, video]);
-    setSearchResults([]);
-    setSearchQuery('');
-  };
+  const newQueue = [...videoQueue, video];
+  setVideoQueue(newQueue);
+  setSearchResults([]);
+  setSearchQuery('');
+  
+  // Add socket sync
+  if (socketRef.current && activeRoom) {
+    socketRef.current.emit('add-video-to-queue', { 
+      roomCode: activeRoom.code, 
+      video 
+    });
+  }
+};
 
   const playVideo = (index) => {
-    setCurrentVideoIndex(index);
-    setIsPlaying(true);
-  };
+  setCurrentVideoIndex(index);
+  setIsPlaying(true);
+  
+  // Add socket sync
+  if (socketRef.current && activeRoom) {
+    socketRef.current.emit('sync-video', { 
+      roomCode: activeRoom.code, 
+      videoIndex: index 
+    });
+  }
+};
 
   const nextVideo = () => {
     if (currentVideoIndex < videoQueue.length - 1) {
@@ -646,10 +674,18 @@ function App() {
             
             <button
               onClick={() => {
-                setActiveTab('videos');
-                setSearchResults([]);
-                setSearchQuery('');
-              }}
+  setActiveTab('videos');
+  setSearchResults([]);
+  setSearchQuery('');
+  
+  // Add socket sync
+  if (socketRef.current && activeRoom) {
+    socketRef.current.emit('sync-tab-change', { 
+      roomCode: activeRoom.code, 
+      tab: 'videos' 
+    });
+  }
+}}
               style={{
                 flex: 1,
                 padding: '12px',
